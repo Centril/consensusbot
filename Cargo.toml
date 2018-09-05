@@ -1,0 +1,10 @@
+[package]
+name = "consensusbot"
+version = "0.1.0"
+authors = ["Mazdak Farrokhzad <twingoow@gmail.com>"]
+
+[dependencies]
+nom = "4.0.0"
+maplit = "1.0.1"
+combine = "3.5.1"
+indexmap = "1.0.1"
