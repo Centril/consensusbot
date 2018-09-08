@@ -188,10 +188,8 @@ named!(line_parser() -> Vec<SCommand<'s>>, spaces0().with(choice!(
 ///
 /// Example: `I think we should totally {@rfcbot merge} this`.
 command!(inline_invocation(),
-    (skip_until(token(INLINE_START)), token(INLINE_START), spaces0())
-        .silent()
+    (skip_until(token(INLINE_START)), token(INLINE_START), spaces0()).silent()
         .with(invocation(IsInline::Yes))
-        .skip((spaces0(), token(INLINE_END)))
 );
 
 /// Parser which recognizes a full rfcbot invocation including
@@ -213,9 +211,9 @@ command!(invocation(inline: IsInline), try(tag_nc("@rfcbot")).with(
         // error messages get weird if we merge the branches.
         let sub = subcommand(inline);
         if let IsInline::Yes = inline {
-            sub.message(ERR_MSG_COMMAND).left()
+            sub.skip((spaces0(), token(INLINE_END)))
+               .message(ERR_MSG_COMMAND_INLINE).left()
         } else {
-            // TODO!
             sub.skip(choice!(eof(), spaces1().skip(skip_many(any()))))
                .message(ERR_MSG_COMMAND).right()
         }
@@ -439,6 +437,7 @@ const ERR_ADD_TEAM: &str = "while parsing an `add-team` command";
 const ERR_REMOVE_TEAM: &str = "while parsing a `remove-team` command";
 const ERR_POLL: &str = "while parsing a `poll` command";
 const ERR_MSG_COMMAND: &str = "while parsing an rfcbot command";
+const ERR_MSG_COMMAND_INLINE: &str = "while parsing an inline rfcbot command";
 
 #[cfg(test)]
 mod test {
@@ -693,7 +692,7 @@ mod test {
             let linearized = cmd1.linearize();
             let cmd2 = ensure_take_singleton(parse_vec_ok(&linearized));
             let cmd3 = cmd1.map(String::as_ref);
-            assert_eq!(cmd3, cmd2);
+            prop_assert_eq!(cmd3, cmd2);
         }
 
         #[test]
@@ -708,7 +707,17 @@ mod test {
 
             let cmd2 = ensure_take_singleton(parse_vec_ok(&front));
             let cmd3 = cmd1.map(String::as_ref);
-            assert_eq!(cmd3, cmd2);
+            prop_assert_eq!(cmd3, cmd2);
+        }
+
+        #[test]
+        fn parser_inline_no_end(
+            cmd1 in gen_command(),
+            mut front in INLINE_FRONT,
+        ) {
+            let linearized = cmd1.linearize();
+            front.push_str(&*linearized);
+            prop_assert!(parse(&front).is_err());
         }
     }
 
