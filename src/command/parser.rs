@@ -229,12 +229,11 @@ command!(invocation(inline: IsInline), tag_nc("@rfcbot").with(
 /// Parser recognizing all the subcommands without
 /// the leading `@rfcbot` invocation.
 command!(subcommand(inline: IsInline), choice!(
-    hold(), cancel(), reviewed(),
     merge(inline), close(inline), postpone(inline),
-    feedback_req(inline),
-    concern(inline),
-    resolve(inline),
-    poll(inline)
+    concern(inline), resolve(inline),
+    cancel(), reviewed(), hold(),
+    poll(inline), feedback_req(inline),
+    add_team(inline), remove_team(inline)
 ));
 
 //==============================================================================
@@ -299,8 +298,8 @@ command!(add_team(inline: IsInline),
 /// Example: `@rfcbot remove-team lang, compiler`.
 command!(remove_team(inline: IsInline),
     oneof_nc!(
-        ["remove-teams"] [report "removed-team"] ["remove_teams"] ["remove_team"]
-        ["removed teams"] ["remove team"] ["removing teams"] ["removing team"]
+        ["remove-teams"] [report "remove-team"] ["remove_teams"] ["remove_team"]
+        ["remove teams"] ["remove team"] ["removing teams"] ["removing team"]
         ["removes teams"] ["removes team"] ["removed teams"] ["removed team"]
     )
     .with(team_set(inline))
@@ -505,6 +504,24 @@ barfoo
         ]);
     }
 
+    #[test]
+    fn success_resolve_mid_body() {
+        let body = "someothertext
+@rfcbot: resolved CONCERN_NAME
+somemoretext
+somemoretext";
+        let body_no_colon = "someothertext
+somemoretext
+@rfcbot resolved CONCERN_NAME
+somemoretext";
+
+        let with_colon = ensure_take_singleton(parse_vec_ok(body));
+        let without_colon = ensure_take_singleton(parse_vec_ok(body_no_colon));
+
+        assert_eq!(with_colon, without_colon);
+        assert_eq!(with_colon, Command::Resolve("CONCERN_NAME"));
+    }
+
     fn ensure_take_singleton<I: IntoIterator>(iter: I) -> I::Item {
         let mut iter = iter.into_iter();
         let singleton = iter.next().unwrap();
@@ -616,21 +633,21 @@ barfoo
         ["close lang, compiler", "closed lang compiler,",
          "closing lang, compiler,", "closes lang compiler"]);
 
-    #[test]
-    fn success_resolve_mid_body() {
-        let body = "someothertext
-@rfcbot: resolved CONCERN_NAME
-somemoretext
-somemoretext";
-        let body_no_colon = "someothertext
-somemoretext
-@rfcbot resolved CONCERN_NAME
-somemoretext";
+    test_from_str!(success_add_team_teamed,
+        Command::AddTeam(btreeset! { "lang", "compiler" }),
+        ["add-team lang, compiler", "add-teams lang compiler,",
+         "add_teams lang, compiler,", "add_team lang compiler",
+         "add team lang compiler", "add teams lang compiler",
+         "adds team lang compiler", "adds teams lang compiler",
+         "added team lang compiler", "added teams lang compiler",
+         "adding team lang compiler", "adding teams lang compiler"]);
 
-        let with_colon = ensure_take_singleton(parse_vec_ok(body));
-        let without_colon = ensure_take_singleton(parse_vec_ok(body_no_colon));
-
-        assert_eq!(with_colon, without_colon);
-        assert_eq!(with_colon, Command::Resolve("CONCERN_NAME"));
-    }
+    test_from_str!(success_remove_team_teamed,
+        Command::RemoveTeam(btreeset! { "lang", "compiler" }),
+        ["remove-team lang, compiler", "remove-teams lang compiler,",
+         "remove_teams lang, compiler,", "remove_team lang compiler",
+         "remove team lang compiler", "remove teams lang compiler",
+         "removes team lang compiler", "removes teams lang compiler",
+         "removed team lang compiler", "removed teams lang compiler",
+         "removing team lang compiler", "removing teams lang compiler"]);
 }
