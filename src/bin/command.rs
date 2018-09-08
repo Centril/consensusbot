@@ -1,21 +1,11 @@
-#![recursion_limit="128"]
+//! Defines a simple REPL you can use to test out the command parser.
 
-#[macro_use] extern crate maplit;
-#[macro_use] extern crate combine;
-
-#[cfg(test)]
-#[macro_use]
-extern crate proptest;
-
-extern crate itertools;
-
-mod command;
+extern crate rfcbot_lib;
 
 use std::io;
+use std::io::prelude::*;
 
 fn main() -> io::Result<()> {
-    use std::io::prelude::*;
-
     let mut input = String::new();
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
@@ -30,7 +20,7 @@ fn main() -> io::Result<()> {
         input.clear();
         stdin.read_line(&mut input)?;
 
-        match command::parse(&input) {
+        match rfcbot_lib::command::parse(&input) {
             Ok(cmd) => println!("{:?}", cmd),
             Err(err) => println!("{}", err),
         }
