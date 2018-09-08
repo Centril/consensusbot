@@ -1,6 +1,7 @@
 //! Defines the concrete syntax for @rfcbot commands and parses it to an AST.
 
 use std::fmt;
+use std::iter;
 
 use command::ast::{SCommand, Command, Poll, TeamSet};
 
@@ -71,8 +72,8 @@ impl<'a> fmt::Display for ParseError<'a> {
         writeln!(fmt, "Failed to parse @rfcbot commands.\n")?;
 
         // Errors:
-        writeln!(fmt, "The following errors were found:")?;
-        writeln!(fmt, "--------------------------------")?;
+        writeln!(fmt, "The following errors were found:\n")?;
+
         for (idx, error) in self.errors.iter().enumerate() {
             writeln!(fmt, "({}) {}", idx + 1, error)?;
         }
@@ -82,8 +83,7 @@ impl<'a> fmt::Display for ParseError<'a> {
         }
 
         // Commands:
-        writeln!(fmt, "The following commands were successfully parsed:")?;
-        writeln!(fmt, "------------------------------------------------")?;
+        writeln!(fmt, "The following commands were successfully parsed:\n")?;
         for (idx, cmd) in self.commands.iter().enumerate() {
             writeln!(fmt, "({}) `{}`", idx + 1, cmd.linearize())?;
         }
@@ -178,27 +178,27 @@ macro_rules! command {
 
 /// Parser recognizing rfcbot commands in a single line;
 /// This parser expects that any text has been split up into lines before.
-named!(line_parser() -> Vec<SCommand<'s>>, choice!(
-    spaces().with(invocation(IsInline::No).map(|cmd| vec![cmd])),
+named!(line_parser() -> Vec<SCommand<'s>>, spaces0().with(choice!(
+    invocation(IsInline::No).map(|cmd| vec![cmd]),
     many1(inline_invocation())
-));
+)));
 
 /// Parser recognizing an inline rfcbot invocation in the form of:
 /// `some text {@rfcbot command...}`.
 ///
 /// Example: `I think we should totally {@rfcbot merge} this`.
 command!(inline_invocation(),
-    (skip_until(token(INLINE_START)), token(INLINE_START), spaces().silent())
+    (skip_until(token(INLINE_START)), token(INLINE_START), spaces0())
         .silent()
         .with(invocation(IsInline::Yes))
-        .skip((spaces().silent(), token(INLINE_END)))
+        .skip((spaces0(), token(INLINE_END)))
 );
 
 /// Parser which recognizes a full rfcbot invocation including
 /// `@rfcbot` optional colon, optional "fcp" / "pr", and the subcommand.
 ///
 /// This parser is parameterized on whether we are in an inline context or not.
-command!(invocation(inline: IsInline), tag_nc("@rfcbot").with(
+command!(invocation(inline: IsInline), try(tag_nc("@rfcbot")).with(
     choice!(
         // If there is a colon then you don't need a leading space.
         try(spaces().skip(token(':')).skip(spaces())),
@@ -290,7 +290,7 @@ command!(add_team(inline: IsInline),
         ["add teams"] ["add team"] ["adding teams"] ["adding team"]
         ["adds teams"] ["adds team"] ["added teams"] ["added team"]
     )
-    .with(team_set(inline))
+    .with(team_set(inline).message(ERR_ADD_TEAM))
     .map(Command::AddTeam)
 );
 
@@ -302,7 +302,7 @@ command!(remove_team(inline: IsInline),
         ["remove teams"] ["remove team"] ["removing teams"] ["removing team"]
         ["removes teams"] ["removes team"] ["removed teams"] ["removed team"]
     )
-    .with(team_set(inline))
+    .with(team_set(inline).message(ERR_REMOVE_TEAM))
     .map(Command::RemoveTeam)
 );
 
@@ -329,29 +329,28 @@ command!(resolve(inline: IsInline),
 command!(feedback_req(inline: IsInline),
     tag_nc("f?").with(
         spaces1().with(
-            token('@').with(line_remainder(inline)).expected(ERR_NO_USER)
+            token('@').with(
+                line_remainder(inline).expected(ERR_NO_USER)
+            ).expected(ERR_NO_USER)
         ).message(ERR_FEEDBACK_REQUEST)
     ).map(Command::FeedbackRequest)
 );
-
-/// Parser recognizing the `poll` token and friends.
-named!(poll_token() -> &'s str, oneof_nc!(
-    ["polling"] ["polled"] ["polls"] [report "poll"]
-    ["asking"] ["asked"] ["asks"] ["ask"]
-    ["querying"] ["queried"] ["queries"] ["query"]
-    ["inquiring"] ["inquired"] ["inquires"] ["inquire"]
-    ["quizzing"] ["quizzed"] ["quizzes"] ["quiz"]
-    ["surveying"] ["surveyed"] ["surveys"] ["survey"]
-));
 
 /// Parser recognizing a poll command.
 /// Example: `@rfcbot poll lang, compiler > Isn't this nice?`
 command!(poll(inline: IsInline),
     struct_parser! { Poll {
-        _: poll_token(),
+        _: oneof_nc!(
+            ["polling"] ["polled"] ["polls"] [report "poll"]
+            ["asking"] ["asked"] ["asks"] ["ask"]
+            ["querying"] ["queried"] ["queries"] ["query"]
+            ["inquiring"] ["inquired"] ["inquires"] ["inquire"]
+            ["quizzing"] ["quizzed"] ["quizzes"] ["quiz"]
+            ["surveying"] ["surveyed"] ["surveys"] ["survey"]
+        ),
         teams: team_set_opt(inline),
         _: token('>').message(ERR_TEAMS_QSEP),
-        _: spaces().silent(),
+        _: spaces0(),
         question: line_remainder(inline)
             .expected(ERR_NO_QUESTION)
             .message(ERR_POLL),
@@ -371,7 +370,7 @@ named!(team_set(inline: IsInline) -> TeamSet<&'s str>, {
         // doesn't match that.
         let neg = ">, \t".chars();
         let tt = if let IsInline::Yes = inline {
-            none_of(neg.chain(::std::iter::once(INLINE_END))).right()
+            none_of(neg.chain(iter::once(INLINE_END))).right()
         } else {
             none_of(neg).left()
         };
@@ -390,14 +389,17 @@ named!(team_set_opt(inline: IsInline) -> TeamSet<&'s str>, choice!(
 /// Parser which recognizes the remainder of a line or if `inline == true`
 /// then it matches until `inline_end()`.
 named!(line_remainder(inline: IsInline) -> &'s str,
-    recognize((
-        none_of(" \t".chars()),
-        if let IsInline::Yes = inline {
-            skip_until(token(INLINE_END)).left()
-        } else {
-            skip_until(eof()).right()
-        },
-    )).map(|s: &str| s.trim())
+    recognize(if let IsInline::Yes = inline {
+        (
+            none_of(" \t".chars().chain(iter::once(INLINE_END))),
+            skip_until(token(INLINE_END))
+        ).left()
+    } else {
+        (
+            none_of(" \t".chars()),
+            skip_until(eof())
+        ).right()
+    }).map(|s: &str| s.trim())
 );
 
 /// Parser which recognizes a case insensitive match on the given tag.
@@ -407,7 +409,10 @@ named!(tag_nc(tag: &'s str) -> &'s str, recognize(tokens2(
 )));
 
 /// Parser which eats \s+.
-named!(spaces1() -> (), (space(), spaces().silent()).map(|_| ()));
+named!(spaces1() -> (), space().with(spaces0()));
+
+/// Parser which eats \s*.
+named!(spaces0() -> (), spaces().silent());
 
 /// Token starting an inline rfcbot invocation.
 const INLINE_START: char = '{';
@@ -422,15 +427,17 @@ const INLINE_END: char = '}';
 // These should be fairly self explanatory:
 
 const ERR_NO_CONCERN_MSG: &str = "a concern message";
-const ERR_CONCERN: &str = "while parsing a concern command";
-const ERR_RESOLVE: &str = "while parsing a resolve command";
+const ERR_CONCERN: &str = "while parsing a `concern` command";
+const ERR_RESOLVE: &str = "while parsing a `resolve` command";
 const ERR_NO_USER: &str = "a GitHub user";
 const ERR_FEEDBACK_REQUEST: &str = "while parsing a feedback request";
 const ERR_NO_QUESTION: &str = "a question to ask";
 const ERR_TEAMS_QSEP: &str = "the teams and the question must be separated by `>`;";
 const ERR_NO_TEAM: &str = "a team";
 const ERR_NO_TEAMS: &str = "while parsing a list of teams,";
-const ERR_POLL: &str = "while parsing a poll command";
+const ERR_ADD_TEAM: &str = "while parsing an `add-team` command";
+const ERR_REMOVE_TEAM: &str = "while parsing a `remove-team` command";
+const ERR_POLL: &str = "while parsing a `poll` command";
 const ERR_MSG_COMMAND: &str = "while parsing an rfcbot command";
 
 #[cfg(test)]
@@ -648,4 +655,63 @@ mod test {
          "removes team lang compiler", "removes teams lang compiler",
          "removed team lang compiler", "removed teams lang compiler",
          "removing team lang compiler", "removing teams lang compiler"]);
+
+    use proptest::prelude::*;
+
+    fn gen_teams(min: usize) -> impl Strategy<Value = TeamSet<String>> {
+        prop::collection::btree_set("[^,\\s>}}]+", min..100)
+    }
+
+    fn gen_command() -> impl Strategy<Value = Command<String>> {
+        let line_rem = "[^\\s}}]+";
+        prop_oneof![
+            Just(Command::Cancel),
+            Just(Command::Reviewed),
+            Just(Command::Hold),
+            gen_teams(1).prop_map(Command::AddTeam),
+            gen_teams(1).prop_map(Command::RemoveTeam),
+            gen_teams(0).prop_map(Command::Merge),
+            gen_teams(0).prop_map(Command::Close),
+            gen_teams(0).prop_map(Command::Postpone),
+            (gen_teams(0), line_rem).prop_map(
+                |(teams, question)| Command::Poll(Poll { teams, question })
+            ),
+            line_rem.prop_map(Command::Concern),
+            line_rem.prop_map(Command::Resolve),
+            line_rem.prop_map(Command::FeedbackRequest),
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn parser_doesnt_crash(string in "\\PC*") {
+            let _ = parse(&string);
+        }
+
+        #[test]
+        fn parser_can_roundtrip(cmd1 in gen_command()) {
+            let linearized = cmd1.linearize();
+            let cmd2 = ensure_take_singleton(parse_vec_ok(&linearized));
+            let cmd3 = cmd1.map(String::as_ref);
+            assert_eq!(cmd3, cmd2);
+        }
+
+        #[test]
+        fn parser_can_roundtrip_inline(
+            cmd1 in gen_command(),
+            mut front in INLINE_FRONT,
+            back in INLINE_BACK,
+        ) {
+            let linearized = cmd1.linearize();
+            front.push_str(&*linearized);
+            front.push_str(&*back);
+
+            let cmd2 = ensure_take_singleton(parse_vec_ok(&front));
+            let cmd3 = cmd1.map(String::as_ref);
+            assert_eq!(cmd3, cmd2);
+        }
+    }
+
+    const INLINE_FRONT: &str = r"[^\{\n\r]*\{[ \t]*";
+    const INLINE_BACK: &str = r"[ \t]*\}[^\{]+";
 }

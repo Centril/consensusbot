@@ -46,8 +46,18 @@ pub enum Command<S> {
     FeedbackRequest(S),
 }
 
+impl<S: AsRef<str>> Poll<S> {
+    /// Functor mapping on Poll.
+    fn map<'s, O: Ord>(&'s self, mapper: impl Fn(&'s S) -> O) -> Poll<O> {
+        Poll {
+            question: mapper(&self.question),
+            teams: self.teams.iter().map(mapper).collect(),
+        }
+    }
+}
+
 impl<S: AsRef<str>> Command<S> {
-    /// Linearize an `@rfcbot ..` command as a `String`.
+    /// Linearize an `@rfcbot ..` command.
     pub fn linearize(&self) -> Cow<'static, str> {
         fn add_teams(teams: &TeamSet<impl AsRef<str>>, mut buf: String) -> String {
             buf.extend(teams.iter().map(|s| s.as_ref()).intersperse(", "));
@@ -97,6 +107,25 @@ impl<S: AsRef<str>> Command<S> {
                 => "@rfcbot hold".into(),
             FeedbackRequest(gh_user)
                 => format!("@rfcbot f? @{}", gh_user.as_ref()).into()
+        }
+    }
+
+    /// Functor mapping on Command.
+    pub fn map<'s, O: Ord>(&'s self, mapper: impl Fn(&'s S) -> O) -> Command<O> {
+        use self::Command::*;
+        match self {
+            Merge(teams) => Merge(teams.iter().map(mapper).collect()),
+            Close(teams) => Close(teams.iter().map(mapper).collect()),
+            Postpone(teams) => Postpone(teams.iter().map(mapper).collect()),
+            AddTeam(teams) => AddTeam(teams.iter().map(mapper).collect()),
+            RemoveTeam(teams) => RemoveTeam(teams.iter().map(mapper).collect()),
+            Cancel => Cancel,
+            Reviewed => Reviewed,
+            Concern(concern) => Concern(mapper(concern)),
+            Resolve(concern) => Resolve(mapper(concern)),
+            Hold => Hold,
+            Poll(poll) => Poll(poll.map(mapper)),
+            FeedbackRequest(gh_user) => FeedbackRequest(mapper(gh_user)),
         }
     }
 }
