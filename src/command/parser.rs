@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use command::ast::{Command, Poll, TeamSet};
+use command::ast::{SCommand, Command, Poll, TeamSet};
 
 use combine::{
     Parser, ParseError as CError, stream::FullRangeStream,
@@ -16,7 +16,7 @@ use combine::{
 /// Parses an `@rfcbot ...` command from an input string and gives back
 /// either a list of `Command`s each in the form of an AST or returns
 /// a `ParseError` if any command could not be successfully parsed.
-pub fn parse(input: &str) -> Result<Vec<Command<&str>>, ParseError<'_>> {
+pub fn parse(input: &str) -> Result<Vec<SCommand<'_>>, ParseError<'_>> {
     let mut commands = vec![];
     let mut errors = vec![];
 
@@ -60,7 +60,7 @@ pub fn parse(input: &str) -> Result<Vec<Command<&str>>, ParseError<'_>> {
 #[derive(Debug)]
 pub struct ParseError<'s> {
     /// Successfully parsed commands.
-    commands: Vec<Command<&'s str>>,
+    commands: Vec<SCommand<'s>>,
     /// Any parse errors that occurred.
     errors: Vec<Errors<char, &'s str, SourcePosition>>,
 }
@@ -139,14 +139,18 @@ macro_rules! named {
     };
 }
 
-/// Constructs a parser which recognizes any of the given identifiers.
-/// At least two idents are needed. The first ident will be the one reported
-/// as expected on error.
+/// Constructs a parser which recognizes any of the given tags.
+/// Tags marked `report` will be reported as expected on error.
 macro_rules! oneof_nc {
-    ($tagf:expr, $($tag:expr),+) => {
+    (__inner report $tag:expr) => {
+        tag_nc($tag).expected($tag)
+    };
+    (__inner $tag:expr) => {
+        tag_nc($tag)
+    };
+    ( $( [ $($tag:tt)+ ] )+ ) => {
         choice!(
-            try(tag_nc($tagf).expected($tagf)),
-            $(try(tag_nc($tag))),+
+            $(try(oneof_nc!(__inner $($tag)+))),+
         )
     };
 }
@@ -162,20 +166,20 @@ enum IsInline { Yes, No }
 /// Constructs a named command parser.
 macro_rules! command {
     // Just delegate to oneof_nc!(..) for simple parsers.
-    ($cmd:ident($($arg:ident: $argt: ty),*), $val:expr, $($tag:expr),+) => {
-        named!($cmd($($arg: $argt),*) -> Command<&'s str>,
-            oneof_nc!($($tag),+).with(value($val)));
+    ($cmd:ident($($arg:ident: $argt: ty),*), $val:expr, $($tag:tt)+) => {
+        named!($cmd($($arg: $argt),*) -> SCommand<'s>,
+            oneof_nc!($($tag)+).with(value($val)));
     };
     // Need more complex logic.
     ($cmd:ident($($arg:ident: $argt:ty),*), $($parser:tt)+) => {
-        named!($cmd($($arg: $argt),*) -> Command<&'s str>, $($parser)+);
+        named!($cmd($($arg: $argt),*) -> SCommand<'s>, $($parser)+);
     };
 }
 
 /// Parser recognizing rfcbot commands in a single line;
 /// This parser expects that any text has been split up into lines before.
-named!(line_parser() -> Vec<Command<&'s str>>, choice!(
-    invocation(IsInline::No).map(|cmd| vec![cmd]),
+named!(line_parser() -> Vec<SCommand<'s>>, choice!(
+    spaces().with(invocation(IsInline::No).map(|cmd| vec![cmd])),
     many1(inline_invocation())
 ));
 
@@ -196,13 +200,13 @@ command!(inline_invocation(),
 /// This parser is parameterized on whether we are in an inline context or not.
 command!(invocation(inline: IsInline), tag_nc("@rfcbot").with(
     choice!(
-        // If there's no colon then we need at least one space.
-        spaces1(),
         // If there is a colon then you don't need a leading space.
-        spaces().skip(token(':')).skip(spaces())
+        try(spaces().skip(token(':')).skip(spaces())),
+        // If there's no colon then we need at least one space.
+        spaces1()
     )
     // Optional `fcp` or `pr` prefix:
-    .skip(optional((oneof_nc!("fcp", "pr"), spaces1())))
+    .skip(optional((oneof_nc!(["fcp"] ["pr"]), spaces1())))
     // Finally the subcommand:
     .with({
         // Don't ask why we are doing the same thing in both branches;
@@ -239,21 +243,24 @@ command!(subcommand(inline: IsInline), choice!(
 
 /// Parser recognizing a `cancel` command.
 /// Example: `@rfcbot cancel`.
-command!(cancel(), Command::Cancel, "cancel", "canceling", "canceled", "cancels");
+command!(cancel(), Command::Cancel,
+    ["canceling"] ["canceled"] ["cancels"] [report "cancel"]);
 
 /// Parser recognizing a `reviewed` command.
 /// Example: `@rfcbot reviewed`.
-command!(reviewed(), Command::Reviewed, "reviewed", "reviewing", "reviews", "review");
+command!(reviewed(), Command::Reviewed,
+    [report "reviewed"] ["reviewing"] ["reviews"] ["review"]);
 
 /// Parser recognizing a `hold` command.
 /// Example: `@rfcbot hold`.
-command!(hold(), Command::Hold, "hold", "holding", "holds", "held");
+command!(hold(), Command::Hold,
+    ["holding"] ["holds"] ["held"] [report "hold"]);
 
 /// Parser recognizing a `merge` command.
 /// Example: `@rfcbot merge`.
 /// Example: `@rfcbot merge lang, compiler`.
 command!(merge(inline: IsInline),
-    oneof_nc!("merge", "merging", "merged", "merges")
+    oneof_nc!(["merging"] ["merged"] ["merges"] [report "merge"])
         .with(team_set_opt(inline))
         .map(Command::Merge)
 );
@@ -262,7 +269,7 @@ command!(merge(inline: IsInline),
 /// Example: `@rfcbot close`.
 /// Example: `@rfcbot close lang, compiler`.
 command!(close(inline: IsInline),
-    oneof_nc!("close", "closing", "closed", "closes")
+    oneof_nc!(["closing"] ["closed"] ["closes"] [report "close"])
         .with(team_set_opt(inline))
         .map(Command::Close)
 );
@@ -271,7 +278,7 @@ command!(close(inline: IsInline),
 /// Example: `@rfcbot postpone`.
 /// Example: `@rfcbot postpone lang, compiler`.
 command!(postpone(inline: IsInline),
-    oneof_nc!("postpone", "postponing", "postponed", "postpones")
+    oneof_nc!(["postponing"] ["postponed"] ["postpones"] [report "postpone"])
         .with(team_set_opt(inline))
         .map(Command::Postpone)
 );
@@ -280,9 +287,9 @@ command!(postpone(inline: IsInline),
 /// Example: `@rfcbot add-team lang, compiler`.
 command!(add_team(inline: IsInline),
     oneof_nc!(
-        "add-team", "add-teams", "add_team", "add_teams", "add team",
-        "add teams", "adding team", "adding teams", "adds team",
-        "adds teams", "added team", "added teams"
+        ["add-teams"] [report "add-team"] ["add_teams"] ["add_team"]
+        ["add teams"] ["add team"] ["adding teams"] ["adding team"]
+        ["adds teams"] ["adds team"] ["added teams"] ["added team"]
     )
     .with(team_set(inline))
     .map(Command::AddTeam)
@@ -292,9 +299,9 @@ command!(add_team(inline: IsInline),
 /// Example: `@rfcbot remove-team lang, compiler`.
 command!(remove_team(inline: IsInline),
     oneof_nc!(
-        "removed-team", "remove-teams", "remove_team", "remove_teams", "remove team",
-        "removed teams", "removing team", "removing teams", "removes team",
-        "removes teams", "removed team", "removed teams"
+        ["remove-teams"] [report "removed-team"] ["remove_teams"] ["remove_team"]
+        ["removed teams"] ["remove team"] ["removing teams"] ["removing team"]
+        ["removes teams"] ["removes team"] ["removed teams"] ["removed team"]
     )
     .with(team_set(inline))
     .map(Command::RemoveTeam)
@@ -307,14 +314,14 @@ named!(concern_msg(inline: IsInline) -> &'s str,
 /// Parser recognizing a `concern` command.
 /// Example: `@rfcbot concern this seems wrong`.
 command!(concern(inline: IsInline),
-    oneof_nc!("concern", "concerning", "concerned", "concerns")
+    oneof_nc!(["concerning"] ["concerned"] ["concerns"] [report "concern"])
         .with(concern_msg(inline).message(ERR_CONCERN))
         .map(Command::Concern));
 
 /// Parser recognizing a `resolve` command.
 /// Example: `@rfcbot resolve this seems wrong`.
 command!(resolve(inline: IsInline),
-    oneof_nc!("resolve", "resolving", "resolved", "resolves")
+    oneof_nc!(["resolving"] ["resolved"] ["resolves"] [report "resolve"])
         .with(concern_msg(inline).message(ERR_RESOLVE))
         .map(Command::Resolve));
 
@@ -330,12 +337,12 @@ command!(feedback_req(inline: IsInline),
 
 /// Parser recognizing the `poll` token and friends.
 named!(poll_token() -> &'s str, oneof_nc!(
-    "poll", "polling", "polled", "polls",
-    "asking", "asked", "asks", "ask",
-    "querying", "queried", "queries", "query",
-    "inquiring", "inquired", "inquires", "inquire",
-    "quizzing", "quizzed", "quizzes", "quiz",
-    "surveying", "surveyed", "surveys", "survey"
+    ["polling"] ["polled"] ["polls"] [report "poll"]
+    ["asking"] ["asked"] ["asks"] ["ask"]
+    ["querying"] ["queried"] ["queries"] ["query"]
+    ["inquiring"] ["inquired"] ["inquires"] ["inquire"]
+    ["quizzing"] ["quizzed"] ["quizzes"] ["quiz"]
+    ["surveying"] ["surveyed"] ["surveys"] ["survey"]
 ));
 
 /// Parser recognizing a poll command.
@@ -426,3 +433,204 @@ const ERR_NO_TEAM: &str = "a team";
 const ERR_NO_TEAMS: &str = "while parsing a list of teams,";
 const ERR_POLL: &str = "while parsing a poll command";
 const ERR_MSG_COMMAND: &str = "while parsing an rfcbot command";
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn parse_vec_ok(text: &str) -> Vec<SCommand<'_>> {
+        match parse(text) {
+            Ok(commands) => commands,
+            Err(err) => panic!("{}", err),
+        }
+    }
+
+    #[test]
+    fn multiple_commands() {
+let text = r#"
+someothertext
+@rfcbot: hold
+somemoretext
+somemoretext
+@rfcbot: fcp cancel
+foobar
+@rfcbot concern foobar
+"#;
+
+        assert_eq!(parse_vec_ok(text), vec![
+            Command::Hold,
+            Command::Cancel,
+            Command::Concern("foobar"),
+        ]);
+    }
+
+    #[test]
+    fn accept_leading_whitespace() {
+let text = r#"
+someothertext
+       @rfcbot: hold
+somemoretext
+somemoretext
+   @rfcbot: fcp cancel
+foobar
+ @rfcbot concern foobar
+"#;
+
+        assert_eq!(parse_vec_ok(text), vec![
+            Command::Hold,
+            Command::Cancel,
+            Command::Concern("foobar"),
+        ]);
+    }
+
+    #[test]
+    fn fix_issue_225() {
+let text = r#"
+someothertext
+    @rfcbot : hold
+somemoretext
+somemoretext
+@rfcbot : fcp cancel
+foobar
+@rfcbot :concern foobar
+barfoo
+@rfcbot:f? @foo
+"#;
+
+        assert_eq!(parse_vec_ok(text), vec![
+            Command::Hold,
+            Command::Cancel,
+            Command::Concern("foobar"),
+            Command::FeedbackRequest("foo"),
+        ]);
+    }
+
+    fn ensure_take_singleton<I: IntoIterator>(iter: I) -> I::Item {
+        let mut iter = iter.into_iter();
+        let singleton = iter.next().unwrap();
+        assert!(iter.next().is_none());
+        singleton
+    }
+
+    macro_rules! test_from_str {
+        ($test: ident, $expected: expr, $message: expr, [$($cmd: expr),+]) => {
+            test_from_str!($test, $expected, [$(concat!($cmd, $message)),+]);
+        };
+
+        ($test: ident, $expected: expr, [$($cmd: expr),+]) => {
+            #[test]
+            fn $test() {
+                let expected = $expected;
+
+                $({
+                    let tests = [
+                        concat!(concat!("@rfcbot : ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot: ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot : fcp ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot: fcp ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot fcp ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot : pr ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot: pr ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("@rfcbot pr ", $cmd), "\n\nfoobar"),
+                        concat!(concat!("{@rfcbot : ", $cmd), "}\tabcd"),
+                        concat!(concat!("bla bla {@rfcbot: ", $cmd), "}  \tabcd"),
+                        concat!(concat!("bla bla {@rfcbot ", $cmd), "} abcd"),
+                        concat!(concat!("bla bla{@rfcbot : fcp ", $cmd), "}\tabcd"),
+                        concat!(concat!("bla bla{  @rfcbot: fcp ", $cmd), "}\tabcd"),
+                        concat!(concat!("bla bla {  @rfcbot fcp ", $cmd), "  }\tabcd"),
+                        concat!(concat!("bla bla{@rfcbot : pr ", $cmd), " }\tabcd"),
+                        concat!(concat!("bla bla{ @rfcbot: pr ", $cmd), " }\tabcd"),
+                        concat!(concat!("bla bla {@rfcbot pr ", $cmd), "}\tabcd"),
+                    ];
+                    for test in &tests {
+                        println!("{}", test);
+                        assert_eq!(
+                            expected,
+                            ensure_take_singleton(parse_vec_ok(test))
+                        );
+                    }
+                })+
+            }
+        };
+    }
+
+    test_from_str!(success_hold, Command::Hold,
+        ["hold", "holds", "held", "holding"]);
+
+    test_from_str!(success_reviewed, Command::Reviewed,
+        ["reviewed", "review", "reviewing", "reviews"]);
+
+    test_from_str!(success_cancel, Command::Cancel,
+        ["cancel", "canceled", "canceling", "cancels"]);
+
+    test_from_str!(success_concern, Command::Concern("CONCERN_NAME"),
+        " CONCERN_NAME",
+        ["concern", "concerned", "concerning", "concerns"]);
+
+    test_from_str!(success_resolve, Command::Resolve("CONCERN_NAME"),
+        " CONCERN_NAME",
+        ["resolve", "resolved", "resolving", "resolves"]);
+
+    test_from_str!(success_feedback, Command::FeedbackRequest("bob"),
+        " @bob", ["f?"]);
+
+    test_from_str!(success_ask_question,
+        Command::Poll(Poll {
+            teams: btreeset! {
+                "avengers",
+                "T-justice-league",
+                "@rust-lang/rust",
+            },
+            question: "TO BE OR NOT TO BE?",
+        }),
+        " avengers T-justice-league, @rust-lang/rust  , > TO BE OR NOT TO BE?",
+        ["ask", "asked", "asking", "asks",
+         "poll", "polled", "polling", "polls",
+         "query", "queried", "querying", "queries",
+         "inquire", "inquired", "inquiring", "inquires",
+         "quiz", "quizzed", "quizzing", "quizzes",
+         "survey", "surveyed", "surveying", "surveys"]);
+
+    test_from_str!(success_merge, Command::Merge(btreeset!{}),
+        ["merge", "merged", "merging", "merges"]);
+
+    test_from_str!(success_merge_teamed,
+        Command::Merge(btreeset! { "lang", "compiler" }),
+        ["merge lang, compiler", "merged lang compiler,",
+         "merging lang, compiler,", "merges lang compiler"]);
+
+    test_from_str!(success_postpone, Command::Postpone(btreeset!{}),
+        ["postpone", "postponed", "postponing", "postpones"]);
+
+    test_from_str!(success_postpone_teamed,
+        Command::Postpone(btreeset! { "lang", "compiler" }),
+        ["postpone lang, compiler", "postponed lang compiler,",
+         "postponing lang, compiler,", "postpones lang compiler"]);
+
+    test_from_str!(success_close, Command::Close(btreeset!{}),
+        ["close", "closed", "closing", "closes"]);
+
+    test_from_str!(success_close_teamed,
+        Command::Close(btreeset! { "lang", "compiler" }),
+        ["close lang, compiler", "closed lang compiler,",
+         "closing lang, compiler,", "closes lang compiler"]);
+
+    #[test]
+    fn success_resolve_mid_body() {
+        let body = "someothertext
+@rfcbot: resolved CONCERN_NAME
+somemoretext
+somemoretext";
+        let body_no_colon = "someothertext
+somemoretext
+@rfcbot resolved CONCERN_NAME
+somemoretext";
+
+        let with_colon = ensure_take_singleton(parse_vec_ok(body));
+        let without_colon = ensure_take_singleton(parse_vec_ok(body_no_colon));
+
+        assert_eq!(with_colon, without_colon);
+        assert_eq!(with_colon, Command::Resolve("CONCERN_NAME"));
+    }
+}

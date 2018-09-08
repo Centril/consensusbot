@@ -96,7 +96,10 @@ impl<S: AsRef<str>> Command<S> {
             Hold
                 => "@rfcbot hold".into(),
             FeedbackRequest(gh_user)
-                => format!("@rfcbot @{}", gh_user.as_ref()).into()
+                => format!("@rfcbot f? @{}", gh_user.as_ref()).into()
         }
     }
 }
+
+/// Command AST using string slices.
+pub type SCommand<'s> = Command<&'s str>;
