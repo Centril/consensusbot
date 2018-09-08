@@ -446,16 +446,14 @@ mod test {
 
     #[test]
     fn multiple_commands() {
-let text = r#"
-someothertext
-@rfcbot: hold
-somemoretext
-somemoretext
-@rfcbot: fcp cancel
-foobar
-@rfcbot concern foobar
-"#;
-
+        let text = "
+        someothertext\n\
+        @rfcbot: hold\n\
+        somemoretext\n\
+        somemoretext\n\
+        @rfcbot: fcp cancel\n\
+        foobar\n\
+        @rfcbot concern foobar";
         assert_eq!(parse_vec_ok(text), vec![
             Command::Hold,
             Command::Cancel,
@@ -465,16 +463,15 @@ foobar
 
     #[test]
     fn accept_leading_whitespace() {
-let text = r#"
-someothertext
-       @rfcbot: hold
-somemoretext
-somemoretext
-   @rfcbot: fcp cancel
-foobar
- @rfcbot concern foobar
-"#;
-
+        let text = "
+        someothertext\n
+            @rfcbot: hold\n
+        somemoretext\n
+        somemoretext\n
+        @rfcbot: fcp cancel\n
+        foobar\n
+        @rfcbot concern foobar\n
+        ";
         assert_eq!(parse_vec_ok(text), vec![
             Command::Hold,
             Command::Cancel,
@@ -484,18 +481,17 @@ foobar
 
     #[test]
     fn fix_issue_225() {
-let text = r#"
-someothertext
-    @rfcbot : hold
-somemoretext
-somemoretext
-@rfcbot : fcp cancel
-foobar
-@rfcbot :concern foobar
-barfoo
-@rfcbot:f? @foo
-"#;
-
+        let text = "
+        someothertext\n\
+            @rfcbot : hold\n\
+        somemoretext\n\
+        somemoretext\n\
+        @rfcbot : fcp cancel\n\
+        foobar\n\
+        @rfcbot :concern foobar\n\
+        barfoo\n\
+        @rfcbot:f? @foo\n\
+        ";
         assert_eq!(parse_vec_ok(text), vec![
             Command::Hold,
             Command::Cancel,
@@ -506,14 +502,16 @@ barfoo
 
     #[test]
     fn success_resolve_mid_body() {
-        let body = "someothertext
-@rfcbot: resolved CONCERN_NAME
-somemoretext
-somemoretext";
-        let body_no_colon = "someothertext
-somemoretext
-@rfcbot resolved CONCERN_NAME
-somemoretext";
+        let body = "
+            someothertext\n\
+            @rfcbot: resolved CONCERN_NAME\n\
+            somemoretext\n\
+            somemoretext";
+        let body_no_colon = "
+            someothertext\n\
+            somemoretext\n\
+            @rfcbot resolved CONCERN_NAME\n\
+            somemoretext";
 
         let with_colon = ensure_take_singleton(parse_vec_ok(body));
         let without_colon = ensure_take_singleton(parse_vec_ok(body_no_colon));
