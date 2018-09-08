@@ -73,9 +73,8 @@ impl<'a> fmt::Display for ParseError<'a> {
         // Errors:
         writeln!(fmt, "The following errors were found:")?;
         writeln!(fmt, "--------------------------------")?;
-        for error in &self.errors {
-            fmt::Display::fmt(error, fmt)?;
-            writeln!(fmt)?;
+        for (idx, error) in self.errors.iter().enumerate() {
+            writeln!(fmt, "({}) {}", idx + 1, error)?;
         }
 
         if self.commands.is_empty() {
