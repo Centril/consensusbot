@@ -1,5 +1,7 @@
 //! Defines the concrete syntax for @rfcbot commands and parses it to an AST.
 
+use std::fmt;
+
 use command::ast::{Command, Poll, TeamSet};
 
 use combine::{
@@ -10,17 +12,6 @@ use combine::{
     skip_many, skip_many1, sep_end_by1, many1, char::{spaces, space},
     parser::{range::recognize, repeat::skip_until},
 };
-
-/// Parse errors detected during parsing;
-/// If there are any errors, we don't produce any commands
-/// to preserve a degree of atomicity in commands.
-#[derive(Debug)]
-pub struct ParseError<'s> {
-    /// Successfully parsed commands.
-    commands: Vec<Command<&'s str>>,
-    /// Any parse errors that occurred.
-    errors: Vec<Errors<char, &'s str, SourcePosition>>,
-}
 
 /// Parses an `@rfcbot ...` command from an input string and gives back
 /// either a list of `Command`s each in the form of an AST or returns
@@ -60,6 +51,46 @@ pub fn parse(input: &str) -> Result<Vec<Command<&str>>, ParseError<'_>> {
             commands,
             errors
         })
+    }
+}
+
+/// Parse errors detected during parsing;
+/// If there are any errors, we don't produce any commands
+/// to preserve a degree of atomicity in commands.
+#[derive(Debug)]
+pub struct ParseError<'s> {
+    /// Successfully parsed commands.
+    commands: Vec<Command<&'s str>>,
+    /// Any parse errors that occurred.
+    errors: Vec<Errors<char, &'s str, SourcePosition>>,
+}
+
+impl<'a> fmt::Display for ParseError<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        // Header:
+        writeln!(fmt, "Failed to parse @rfcbot commands.\n")?;
+
+        // Errors:
+        writeln!(fmt, "The following errors were found:")?;
+        writeln!(fmt, "--------------------------------")?;
+        for error in &self.errors {
+            fmt::Display::fmt(error, fmt)?;
+            writeln!(fmt)?;
+        }
+
+        if self.commands.is_empty() {
+            return Ok(());
+        }
+
+        // Commands:
+        writeln!(fmt, "The following commands were successfully parsed:")?;
+        writeln!(fmt, "------------------------------------------------")?;
+        for (idx, cmd) in self.commands.iter().enumerate() {
+            writeln!(fmt, "({}) `{}`", idx + 1, cmd.linearize())?;
+        }
+
+        // Done:
+        Ok(())
     }
 }
 

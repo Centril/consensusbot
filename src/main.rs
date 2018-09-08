@@ -1,8 +1,11 @@
 #![recursion_limit="128"]
 
-#[macro_use] extern crate maplit;
 #[macro_use] extern crate nom;
+
+#[macro_use] extern crate maplit;
 #[macro_use] extern crate combine;
+
+extern crate itertools;
 
 mod nom_command;
 mod command;
