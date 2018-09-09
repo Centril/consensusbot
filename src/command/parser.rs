@@ -17,7 +17,9 @@ use combine::{
 /// Parses an `@rfcbot ...` command from an input string and gives back
 /// either a list of `Command`s each in the form of an AST or returns
 /// a `ParseError` if any command could not be successfully parsed.
-pub fn parse(input: &str) -> Result<Vec<SCommand<'_>>, ParseError<'_>> {
+pub fn parse<'s>(input: &'s str, cfg: Config<'s>)
+    -> Result<Vec<SCommand<'s>>, ParseError<'s>>
+{
     let mut commands = vec![];
     let mut errors = vec![];
 
@@ -30,7 +32,7 @@ pub fn parse(input: &str) -> Result<Vec<SCommand<'_>>, ParseError<'_>> {
         let state = State::with_positioner(input, pos);
 
         // Parse the line:
-        match line_parser().easy_parse(state) {
+        match line_parser(cfg).easy_parse(state) {
             Ok((cmd, _)) => commands.extend(cmd),
             // We look for an actual error -- combine will think that
             // lines we don't actually consider to be attempts at command
@@ -53,6 +55,26 @@ pub fn parse(input: &str) -> Result<Vec<SCommand<'_>>, ParseError<'_>> {
             errors
         })
     }
+}
+
+/// The activation phrase / mention that begins a valid bot command.
+/// For example: `@rfcbot`.
+#[derive(Copy, Clone, Debug)]
+pub struct ActivationPhrase<'s> {
+    pub phrase: &'s str
+}
+
+impl<'s> Default for ActivationPhrase<'s> {
+    fn default() -> Self {
+        Self { phrase: "@rfcbot" }
+    }
+}
+
+/// Configuration options for the command parser.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Config<'s> {
+    /// The activation phrase triggering command recognition.
+    pub activation: ActivationPhrase<'s>,
 }
 
 /// Parse errors detected during parsing;
@@ -178,51 +200,55 @@ macro_rules! command {
 
 /// Parser recognizing rfcbot commands in a single line;
 /// This parser expects that any text has been split up into lines before.
-named!(line_parser() -> Vec<SCommand<'s>>, spaces0().with(choice!(
-    invocation(IsInline::No).map(|cmd| vec![cmd]),
-    many1(inline_invocation())
-)));
+named!(line_parser(cfg: Config<'s>) -> Vec<SCommand<'s>>,
+    spaces0().with(choice!(
+        invocation(cfg, IsInline::No).map(|cmd| vec![cmd]),
+        many1(inline_invocation(cfg))
+    )
+));
 
 /// Parser recognizing an inline rfcbot invocation in the form of:
 /// `some text {@rfcbot command...}`.
 ///
 /// Example: `I think we should totally {@rfcbot merge} this`.
-command!(inline_invocation(),
+command!(inline_invocation(cfg: Config<'s>),
     (skip_until(token(INLINE_START)), token(INLINE_START), spaces0()).silent()
-        .with(invocation(IsInline::Yes))
+        .with(invocation(cfg, IsInline::Yes))
 );
 
 /// Parser which recognizes a full rfcbot invocation including
 /// `@rfcbot` optional colon, optional "fcp" / "pr", and the subcommand.
 ///
 /// This parser is parameterized on whether we are in an inline context or not.
-command!(invocation(inline: IsInline), try(tag_nc("@rfcbot")).with(
-    choice!(
-        // If there is a colon then you don't need a leading space.
-        try(spaces().skip(token(':')).skip(spaces())),
-        // If there's no colon then we need at least one space.
-        spaces1()
+command!(invocation(cfg: Config<'s>, inline: IsInline),
+    try(tag_nc(cfg.activation.phrase)).with(
+        choice!(
+            // If there is a colon then you don't need a leading space.
+            try(spaces().skip(token(':')).skip(spaces())),
+            // If there's no colon then we need at least one space.
+            spaces1()
+        )
+        // Optional `fcp` or `pr` prefix:
+        .skip(optional((oneof_nc!(["fcp"] ["pr"]), spaces1())))
+        // Finally the subcommand:
+        .with({
+            // Don't ask why we are doing the same thing in both branches;
+            // error messages get weird if we merge the branches.
+            let sub = subcommand(inline);
+            if let IsInline::Yes = inline {
+                sub.skip((spaces0(), token(INLINE_END)))
+                .message(ERR_MSG_COMMAND_INLINE).left()
+            } else {
+                sub.skip(choice!(eof(), spaces1().skip(skip_many(any()))))
+                .message(ERR_MSG_COMMAND).right()
+            }
+        })
+        // This marks that the error was an actual parse error.
+        // When "@rfcbot" hasn't been parsed yet, we don't know that it is an error.
+        // Once it is parsed, we expect subsequent bits to follow our grammar.
+        .message(ACTUAL_ERROR_MARK)
     )
-    // Optional `fcp` or `pr` prefix:
-    .skip(optional((oneof_nc!(["fcp"] ["pr"]), spaces1())))
-    // Finally the subcommand:
-    .with({
-        // Don't ask why we are doing the same thing in both branches;
-        // error messages get weird if we merge the branches.
-        let sub = subcommand(inline);
-        if let IsInline::Yes = inline {
-            sub.skip((spaces0(), token(INLINE_END)))
-               .message(ERR_MSG_COMMAND_INLINE).left()
-        } else {
-            sub.skip(choice!(eof(), spaces1().skip(skip_many(any()))))
-               .message(ERR_MSG_COMMAND).right()
-        }
-    })
-    // This marks that the error was an actual parse error.
-    // When "@rfcbot" hasn't been parsed yet, we don't know that it is an error.
-    // Once it is parsed, we expect subsequent bits to follow our grammar.
-    .message(ACTUAL_ERROR_MARK)
-));
+);
 
 /// Parser recognizing all the subcommands without
 /// the leading `@rfcbot` invocation.
@@ -454,7 +480,7 @@ mod test {
     use super::*;
 
     fn parse_vec_ok(text: &str) -> Vec<SCommand<'_>> {
-        match parse(text) {
+        match parse(text, Config::default()) {
             Ok(commands) => commands,
             Err(err) => panic!("{}", err),
         }
@@ -702,7 +728,7 @@ mod test {
     proptest! {
         #[test]
         fn parser_doesnt_crash(string in "\\PC*") {
-            let _ = parse(&string);
+            let _ = parse(&string, Config::default());
         }
 
         #[test]
@@ -735,7 +761,7 @@ mod test {
         ) {
             let linearized = cmd1.linearize();
             front.push_str(&*linearized);
-            prop_assert!(parse(&front).is_err());
+            prop_assert!(parse(&front, Config::default()).is_err());
         }
     }
 

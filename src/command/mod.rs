@@ -4,4 +4,4 @@ mod ast;
 mod parser;
 
 pub use self::ast::{TeamSet, Poll, Command};
-pub use self::parser::parse;
+pub use self::parser::{parse, Config, ActivationPhrase};
