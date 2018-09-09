@@ -229,7 +229,7 @@ command!(invocation(inline: IsInline), try(tag_nc("@rfcbot")).with(
 command!(subcommand(inline: IsInline), choice!(
     merge(inline), close(inline), postpone(inline),
     concern(inline), resolve(inline),
-    cancel(), reviewed(), hold(), unhold(),
+    cancel(), reviewed(), unreviewed(), hold(), unhold(),
     poll(inline), feedback_req(inline),
     add_team(inline), remove_team(inline)
 ));
@@ -247,6 +247,11 @@ command!(cancel(), Command::Cancel,
 /// Example: `@rfcbot reviewed`.
 command!(reviewed(), Command::Reviewed,
     [report "reviewed"] ["reviewing"] ["reviews"] ["review"]);
+
+/// Parser recognizing an `unreviewed` command.
+/// Example: `@rfcbot unreviewed`.
+command!(unreviewed(), Command::Unreviewed,
+    [report "unreviewed"] ["unreviewing"] ["unreviews"] ["unreview"]);
 
 /// Parser recognizing a `hold` command.
 /// Example: `@rfcbot hold`.
@@ -590,6 +595,9 @@ mod test {
     test_from_str!(success_reviewed, Command::Reviewed,
         ["reviewed", "review", "reviewing", "reviews"]);
 
+    test_from_str!(success_unreviewed, Command::Unreviewed,
+        ["unreviewed", "unreview", "unreviewing", "unreviews"]);
+
     test_from_str!(success_cancel, Command::Cancel,
         ["cancel", "canceled", "canceling", "cancels"]);
 
@@ -674,6 +682,7 @@ mod test {
         prop_oneof![
             Just(Command::Cancel),
             Just(Command::Reviewed),
+            Just(Command::Unreviewed),
             Just(Command::Hold),
             Just(Command::Unhold),
             gen_teams(1).prop_map(Command::AddTeam),

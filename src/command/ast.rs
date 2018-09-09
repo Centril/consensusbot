@@ -34,6 +34,8 @@ pub enum Command<S> {
     Cancel,
     /// An `@rfcbot reviewed` command.
     Reviewed,
+    /// An `@rfcbot unreviewed` command.
+    Unreviewed,
     /// An `@rfcbot concern $concern` command.
     Concern(S),
     /// An `@rfcbot resolve $concern` command.
@@ -101,6 +103,8 @@ impl<S: AsRef<str>> Command<S> {
                 => "@rfcbot cancel".into(),
             Reviewed
                 => "@rfcbot reviewed".into(),
+            Unreviewed
+                => "@rfcbot unreviewed".into(),
             Concern(concern)
                 => format!("@rfcbot concern {}", concern.as_ref()).into(),
             Resolve(concern)
@@ -125,6 +129,7 @@ impl<S: AsRef<str>> Command<S> {
             RemoveTeam(teams) => RemoveTeam(teams.iter().map(mapper).collect()),
             Cancel => Cancel,
             Reviewed => Reviewed,
+            Unreviewed => Unreviewed,
             Concern(concern) => Concern(mapper(concern)),
             Resolve(concern) => Resolve(mapper(concern)),
             Hold => Hold,
