@@ -8,5 +8,9 @@ maplit = "1.0.1"
 combine = "3.5.1"
 itertools = "0.7.8"
 
+serde = "1.0.78"
+serde_derive = "1.0.78"
+toml = "0.4.6"
+
 [dev-dependencies]
 proptest = "0.8.6"

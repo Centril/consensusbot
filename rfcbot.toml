@@ -1,0 +1,150 @@
+activation_phrase = "@rfcbot"
+
+[fcp_behaviors]
+
+[fcp_behaviors."rust-lang/rfcs"]
+close = true
+postpone = true
+
+[fcp_behaviors."rust-lang/rust"]
+close = false
+postpone = false
+
+[teams]
+
+[teams.T-core]
+name = "Core"
+ping = "rust-lang/core"
+members = [
+  "alexcrichton",
+  "ashleygwilliams",
+  "aturon",
+  "carols10cents",
+  "nikomatsakis",
+  "nrc",
+  "steveklabnik",
+  "wycats",
+  "aidanhs",
+  "Mark-Simulacrum",
+]
+
+[teams.T-lang]
+name = "Language"
+ping = "rust-lang/lang"
+members = [
+  "aturon",
+  "cramertj",
+  "eddyb",
+  "nikomatsakis",
+  "nrc",
+  "pnkfelix",
+  "withoutboats",
+  "joshtriplett",
+  "scottmcm",
+  "Centril",
+]
+
+[teams.T-libs]
+name = "Libraries"
+ping = "rust-lang/libs"
+members = [
+  "alexcrichton",
+  "dtolnay",
+  "sfackler",
+  "withoutboats",
+  "Kimundi",
+  "SimonSapin",
+]
+
+[teams.T-compiler]
+name = "Compiler"
+ping = "rust-lang/compiler"
+members = [
+  "cramertj",
+  "eddyb",
+  "estebank",
+  "michaelwoerister",
+  "nagisa",
+  "nikomatsakis",
+  "oli-obk",
+  "petrochenkov",
+  "pnkfelix",
+  "varkor",
+  "Zoxc",
+]
+
+[teams.T-doc]
+name = "Documentation"
+ping = "rust-lang/docs"
+members = [
+  "frewsxcv",
+  "GuillaumeGomez",
+  "QuietMisdreavus",
+  "steveklabnik",
+]
+
+[teams.T-infra]
+name = "Infrastructure"
+ping = "rust-lang/infra"
+members = [
+  "aidanhs",
+  "alexcrichton",
+  "aturon",
+  "carols10cents",
+  "erickt",
+  "kennytm",
+  "Mark-Simulacrum",
+  "shepmaster",
+  "TimNN",
+]
+
+[teams.T-cargo]
+name = "Cargo"
+ping = "rust-lang/cargo"
+members = [
+  "alexcrichton",
+  "aturon",
+  "carols10cents",
+  "joshtriplett",
+  "matklad",
+  "withoutboats",
+  "wycats",
+]
+
+[teams.T-dev-tools]
+name = "Dev tools"
+ping = "rust-lang/dev-tools"
+members = [
+  "fitzgen",
+  "japaric",
+  "killercup",
+  "nrc",
+  "Manishearth",
+  "withoutboats",
+  "steveklabnik",
+]
+
+[teams.T-rustdoc]
+name = "Rustdoc"
+ping = "rust-lang/rustdoc"
+members = [
+  "GuillaumeGomez",
+  "QuietMisdreavus",
+  "ollie27",
+  "onur",
+  "steveklabnik",
+]
+
+[teams.T-IDEs]
+name = "IDEs and editors"
+ping = "rust-lang/IDEs"
+members = [
+  "alexheretic",
+  "autozimu",
+  "jasonwilliams",
+  "LucasBullen",
+  "matklad",
+  "nrc",
+  "vlad20012",
+  "Xanewok",
+]
