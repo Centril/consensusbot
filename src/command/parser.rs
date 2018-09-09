@@ -59,14 +59,20 @@ pub fn parse<'s>(input: &'s str, cfg: Config<'s>)
 
 /// The activation phrase / mention that begins a valid bot command.
 /// For example: `@rfcbot`.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ActivationPhrase<'s> {
-    pub phrase: &'s str
+    phrase: &'s str
+}
+
+impl<'s> From<&'s str> for ActivationPhrase<'s> {
+    fn from(phrase: &'s str) -> Self {
+        Self { phrase }
+    }
 }
 
 impl<'s> Default for ActivationPhrase<'s> {
     fn default() -> Self {
-        Self { phrase: "@rfcbot" }
+        "@rfcbot".into()
     }
 }
 
