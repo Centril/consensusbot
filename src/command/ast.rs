@@ -40,6 +40,8 @@ pub enum Command<S> {
     Resolve(S),
     /// An `@rfcbot hold` command.
     Hold,
+    /// An `@rfcbot unhold` command.
+    Unhold,
     /// An `@rfcbot poll $teams? > $question` command.
     Poll(Poll<S>),
     /// An `@rfcbot f? @$github_user` command.
@@ -105,6 +107,8 @@ impl<S: AsRef<str>> Command<S> {
                 => format!("@rfcbot resolve {}", concern.as_ref()).into(),
             Hold
                 => "@rfcbot hold".into(),
+            Unhold
+                => "@rfcbot unhold".into(),
             FeedbackRequest(gh_user)
                 => format!("@rfcbot f? @{}", gh_user.as_ref()).into()
         }
@@ -124,6 +128,7 @@ impl<S: AsRef<str>> Command<S> {
             Concern(concern) => Concern(mapper(concern)),
             Resolve(concern) => Resolve(mapper(concern)),
             Hold => Hold,
+            Unhold => Unhold,
             Poll(poll) => Poll(poll.map(mapper)),
             FeedbackRequest(gh_user) => FeedbackRequest(mapper(gh_user)),
         }
